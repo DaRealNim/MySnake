@@ -32,7 +32,6 @@ public class MySnakeMultiplayer extends Game {
 
     private ArrayList<MySnakePiece> snake;
 
-    private ArrayList<MySnakeMultiplayerOpponent> opponents;
     private Vector2I apple;
 
     private int frameCounter;
@@ -50,6 +49,7 @@ public class MySnakeMultiplayer extends Game {
     private Client client;
     private boolean waitingForOpponent;
     private AcceptThread acceptThread;
+    private ArrayList<MySnakeMultiplayerOpponent> opponents;
 
 
     private MySnakeMultiplayer() {
@@ -135,7 +135,7 @@ public class MySnakeMultiplayer extends Game {
 
         // GlobalLogger.log(this, LogLevel.INFO, "%s", IP);
 
-        FontHandler.registerFont(this, "8bit", "/home/Nim/MySnake/res/fonts/8bit.ttf");
+        FontHandler.registerFont(this, "8bit", "/home/Nim/github_clones/MySnake/res/fonts/8bit.ttf");
 
         direction = -1;
 
