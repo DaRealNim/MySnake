@@ -71,6 +71,10 @@ class Server {
     return -1;
   }
 
+  public String getClientIPById(int id) {
+      return clients.get(getClientIndexById(id)).ip;
+  }
+
   public int waitForClient() {
     int currentlastclientid = this.ccount;
     while(true) {

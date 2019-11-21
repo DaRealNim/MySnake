@@ -56,6 +56,7 @@ public final class Gingerbread2 extends Game {
 	}
 
 	public static void main(final String[] args) {
+		GlobalLogger.redirectSystemOutput();
 		final Gingerbread2 gingerbreadR = new Gingerbread2();
 		gingerbreadR.createRegularWindow("Gingerbread 2", 800, 600, 2);
 		gingerbreadR.start();

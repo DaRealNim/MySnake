@@ -59,6 +59,67 @@ public class MySnakeMultiplayer extends Game {
     }
 
 
+    private MySnakeMultiplayerOpponent getOpponentByClientId(int clientId) {
+        for(MySnakeMultiplayerOpponent opponent : opponents) {
+            if(opponent.getId() == clientId) return opponent;
+        }
+        return null;
+    }
+
+
+    public class RequestThread extends Thread {
+        Server server;
+        int clientId;
+        Client client;
+        int request;
+
+        //requests:
+        //0: update direction of my snake
+        //  - recv direction (int)
+
+        private receiveAndHandleRequest(Server server) {
+            request = server.recvInt();
+            switch(request) {
+                case 0:
+                    int direction = server.recvInt();
+                    if (0 <= direction && direction <= 3)
+                        getOpponentByClientId(clientId).setDirection(direction);
+                    else
+                        GlobalLogger.log(this, LogLevel.SEVERE, "Invalid direction %d received from client %d (%s)", direction, clientId, server.getClientIPById(clientId));
+                    break;
+                default:
+                    GlobalLogger.log(this, LogLevel.SEVERE, "Invalid request %d received from client %d (%s)", request, clientId, server.getClientIPById(clientId));
+                    break;
+            }
+        }
+
+        private receiveAndHandleRequest(Client client) {
+
+        }
+
+        public void run() {
+            while(true) {
+                if (isServer) {
+                    receiveAndHandleRequest(server);
+                } else {
+                    receiveAndHandleRequest(client);
+                }
+            }
+        }
+
+
+
+        public RequestThread(Server server, int clientId) {
+            this.server = server;
+            this.clientId = clientId;
+        }
+
+        public RequestThread(Client client) {
+            this.client = client;
+        }
+    }
+
+
     public class AcceptThread extends Thread {
         Server server;
         public void run(){
@@ -176,6 +237,7 @@ public class MySnakeMultiplayer extends Game {
             if (paused) paused = false; else paused = true;
         }
 
+        int previous = direction;
         if (up && !down && !left && !right) {
             if (direction != 3) direction = 1;
         } else if (!up && down && !left && !right) {
@@ -184,6 +246,11 @@ public class MySnakeMultiplayer extends Game {
             if (direction != 2) direction = 0;
         } else if (!up && !down && !left && right) {
             if (direction != 0) direction = 2;
+        }
+
+        if(!isServer && direction!=previous) {
+            client.sendInt(0); //update direction request
+            client.sendInt(direction);
         }
 
         if(frameCounter >= REFRESH_RATE/6) {

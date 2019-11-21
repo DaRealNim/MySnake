@@ -25,6 +25,7 @@ public abstract class Game extends ThreadContainer {
 		this.refreshRate = refreshRate;
 		this.keyboard = new Keyboard();
 		this.mouse = new Mouse();
+		GlobalLogger.redirectSystemOutput();
 		GlobalLogger.log(this, LogLevel.DEBUG, "Creating game container id: %s, refresh rate: %.0f", identifier, refreshRate);
 	}
 
