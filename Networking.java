@@ -1,12 +1,9 @@
 // A networking library to simplify server, client, and socket operations in general
-// Made for Gingerbread (TM) by Skander Jeddi
 
 // Programmed with love by Nim <3
 //  https://www.nimsworld.ml
 //  darealnim@gmail.com
 
-//package com.skanderj.gingerbread.networking;
-//package networking;
 
 import java.net.*;
 import java.nio.*;
@@ -25,9 +22,9 @@ class Server {
   boolean mustDie = false;
 
 
-  protected class AcceptThread implements Runnable {
+  protected class NetworkingAcceptThread extends Thread {
     public void run() {
-      System.out.println("NETWORKING STATUS: Accept thread initialized");
+      System.out.println("NETWORKING STATUS: NetworkingAcceptThread initialized");
       while (!Server.this.mustDie) {
         if (Server.this.clients.size() < Server.this.maxclients) {
           try {
@@ -111,7 +108,8 @@ class Server {
     if (!this.started) {
       this.started = true;
       this.mustDie = false;
-      new Thread(new AcceptThread()).start();
+      NetworkingAcceptThread acceptThread = new NetworkingAcceptThread();
+      acceptThread.start();
       return;
     } else {
       System.out.println("NETWORKING ERROR: The server is already started. Use the stop() method to stop it first.");

@@ -62,8 +62,9 @@ public class MySnakeMultiplayer extends Game {
     public class AcceptThread extends Thread {
         Server server;
         public void run(){
+            server.start();
+            GlobalLogger.log(this, LogLevel.INFO, "STARTING AcceptThread");
             while(true) {
-                GlobalLogger.log(this, LogLevel.INFO, "STARTING AcceptThread");
                 int clientId = server.waitForClient();
                 GlobalLogger.log(this, LogLevel.INFO, "Receiving connection");
                 String receivedHeader = server.recvString(clientId, 25); //Header should be "MySnakeMultiplayer by Nim"
@@ -117,7 +118,11 @@ public class MySnakeMultiplayer extends Game {
         } else {
             GlobalLogger.log(this, LogLevel.INFO, "Starting game as Client side");
             client = new Client();
-            client.connect(IP, port);
+            if(client.connect(IP, port) != 0) {
+                GlobalLogger.log(this, LogLevel.FATAL, "Could not connect to provided RHOST");
+            } else {
+                GlobalLogger.log(this, LogLevel.FATAL, "Connection successful!");
+            }
             client.sendString("MySnakeMultiplayer by Nim");
         }
 
