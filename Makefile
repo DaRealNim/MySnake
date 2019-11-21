@@ -6,7 +6,7 @@ launch: all
 	cd bin/ && java MySnakeLauncher
 
 mlaunchserv: all
-	cd bin/ && java MySnakeLauncherMultiplayer server 0.0.0.0 4444
+	cd bin/ && java MySnakeMultiplayerDedicatedServer 4444
 
 mlaunchclient: all
-	cd bin/ && java MySnakeLauncherMultiplayer client localhost 4444
+	cd bin/ && java MySnakeLauncherMultiplayer localhost 4444

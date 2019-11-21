@@ -34,84 +34,50 @@ public class MySnakeMultiplayer extends Game {
 
     private Vector2I apple;
 
-    private int frameCounter;
     private boolean addPiece;
     private boolean fuckingDead;
-    private boolean paused;
-
-    private double speed;
 
     //multiplayer stuff
-    private boolean isServer;
     private String IP;
     private int port;
-    private Server server;
     private Client client;
-    private boolean waitingForOpponent;
-    private AcceptThread acceptThread;
-    private ArrayList<MySnakeMultiplayerOpponent> opponents;
+    private RequestThread requestThread;
 
+    private boolean mustSync;
+    private boolean syncedLogic;
+    private boolean syncedDisplay;
+    private ArrayList<MySnakeMultiplayerOpponent> opponents;
 
     private MySnakeMultiplayer() {
         super("mysnake", REFRESH_RATE);
         snake = new ArrayList<MySnakePiece>();
-        opponents = new ArrayList<MySnakeMultiplayerOpponent>();
+
     }
 
-
-    private MySnakeMultiplayerOpponent getOpponentByClientId(int clientId) {
-        for(MySnakeMultiplayerOpponent opponent : opponents) {
-            if(opponent.getId() == clientId) return opponent;
-        }
-        return null;
-    }
 
 
     public class RequestThread extends Thread {
-        Server server;
-        int clientId;
         Client client;
-        int request;
 
-        //requests:
-        //0: update direction of my snake
-        //  - recv direction (int)
-
-        private receiveAndHandleRequest(Server server) {
-            request = server.recvInt();
-            switch(request) {
-                case 0:
-                    int direction = server.recvInt();
-                    if (0 <= direction && direction <= 3)
-                        getOpponentByClientId(clientId).setDirection(direction);
-                    else
-                        GlobalLogger.log(this, LogLevel.SEVERE, "Invalid direction %d received from client %d (%s)", direction, clientId, server.getClientIPById(clientId));
-                    break;
-                default:
-                    GlobalLogger.log(this, LogLevel.SEVERE, "Invalid request %d received from client %d (%s)", request, clientId, server.getClientIPById(clientId));
-                    break;
-            }
-        }
-
-        private receiveAndHandleRequest(Client client) {
-
-        }
+        //Client side possible requests:
+        //0 : sync request: handle all logic once
 
         public void run() {
+            GlobalLogger.log(this, LogLevel.INFO, "STARTING RequestThread");
             while(true) {
-                if (isServer) {
-                    receiveAndHandleRequest(server);
-                } else {
-                    receiveAndHandleRequest(client);
+                Integer request = client.recvInt();
+                if (request == null) {
+                    return;
+                }
+                switch(request) {
+                    case 0:
+                        mustSync = true;
+                        break;
+                    default:
+                        GlobalLogger.log(this, LogLevel.SEVERE, "Invalid request %d received from server", request);
+                        break;
                 }
             }
-        }
-
-
-
-        public RequestThread(Server server, int clientId) {
-            this.server = server;
-            this.clientId = clientId;
         }
 
         public RequestThread(Client client) {
@@ -120,91 +86,48 @@ public class MySnakeMultiplayer extends Game {
     }
 
 
-    public class AcceptThread extends Thread {
-        Server server;
-        public void run(){
-            server.start();
-            GlobalLogger.log(this, LogLevel.INFO, "STARTING AcceptThread");
-            while(true) {
-                int clientId = server.waitForClient();
-                GlobalLogger.log(this, LogLevel.INFO, "Receiving connection");
-                String receivedHeader = server.recvString(clientId, 25); //Header should be "MySnakeMultiplayer by Nim"
-                if(!receivedHeader.equals("MySnakeMultiplayer by Nim")) {
-                    GlobalLogger.log(this, LogLevel.INFO, "Invalid header, dropping");
-                    server.dropConn(clientId);
-                }
-                //Header is correct. Can begin to send data c:
-                waitingForOpponent = false;
-                //generating random start pos for this player
-                int x = rand.nextInt(BOARD_WIDTH);
-                int y = rand.nextInt(BOARD_HEIGHT);
-                MySnakeMultiplayerOpponent opponent = new MySnakeMultiplayerOpponent(clientId);
-                opponent.addPiece(new MySnakePiece(x,y));
-                opponent.addPiece(new MySnakePiece(x+1,y));
-                opponents.add(opponent);
-            }
-        }
-
-        public AcceptThread(Server server) {
-            this.server = server;
-        }
-    }
-
-
 
     public void passArgs(String[] args) {
-        GlobalLogger.log(this, LogLevel.FATAL, "%s", args[0]);
-        if(args[0].equals("server")) isServer = true; else isServer = false;
-        IP = args[1];
-        port = Integer.valueOf(args[2]);
+        IP = args[0];
+        port = Integer.valueOf(args[1]);
     }
 
     @Override
     protected void create() {
         // DO YOUR STUFF
-        waitingForOpponent = true;
-        frameCounter = 0;
 
-        if(isServer) {
-            GlobalLogger.log(this, LogLevel.INFO, "Starting game as Server side");
-            server = new Server();
-            if(server.init(port, 10) != 0) {
-                GlobalLogger.log(this, LogLevel.FATAL, "COULDN'T START SERVER ON PORT %d", port);
-                this.stop();
-            } else {
-                GlobalLogger.log(this, LogLevel.INFO, "SERVER CREATE AND BIND SUCCESS ON PORT %d", port);
-            }
-            acceptThread = new AcceptThread(server);
-            acceptThread.start();
+        GlobalLogger.log(this, LogLevel.INFO, "Starting game");
+        client = new Client();
+        if(client.connect(IP, port) != 0) {
+            GlobalLogger.log(this, LogLevel.FATAL, "Could not connect to provided RHOST");
         } else {
-            GlobalLogger.log(this, LogLevel.INFO, "Starting game as Client side");
-            client = new Client();
-            if(client.connect(IP, port) != 0) {
-                GlobalLogger.log(this, LogLevel.FATAL, "Could not connect to provided RHOST");
-            } else {
-                GlobalLogger.log(this, LogLevel.FATAL, "Connection successful!");
-            }
-            client.sendString("MySnakeMultiplayer by Nim");
+            GlobalLogger.log(this, LogLevel.FATAL, "Connection successful!");
         }
+        client.sendString("MySnakeMultiplayer by Nim");
 
+        mustSync = false;
+        syncedLogic = false;
+        syncedDisplay = false;
+        opponents = new ArrayList<MySnakeMultiplayerOpponent>();
 
+        //receive your snake position
+        int x = client.recvInt();
+        int y = client.recvInt();
 
-        snake.add(new MySnakePiece(rand.nextInt(BOARD_WIDTH/2)+BOARD_WIDTH/4, rand.nextInt(BOARD_HEIGHT/2)+BOARD_HEIGHT/4));
-        snake.add(new MySnakePiece(snake.get(0).getX()+1, snake.get(0).getY()));
+        snake.add(new MySnakePiece(x, y));
+        snake.add(new MySnakePiece(x+1, y+1));
 
         apple = new Vector2I(rand.nextInt(BOARD_WIDTH), rand.nextInt(BOARD_HEIGHT));
         addPiece = false;
         fuckingDead = false;
-        paused = false;
-        speed = 4.0;
+
+        requestThread = new RequestThread(client);
+        requestThread.start();
         // ImageHandler.registerImage(this, "apple", "/home/Nim/MySnake/res/img/apple.png");
 
         // GlobalLogger.log(this, LogLevel.INFO, "%s", IP);
 
         FontHandler.registerFont(this, "8bit", "/home/Nim/github_clones/MySnake/res/fonts/8bit.ttf");
-
-        direction = -1;
-
         super.create();
     }
 
@@ -227,33 +150,37 @@ public class MySnakeMultiplayer extends Game {
         }
         // LOGIC GOES HERE
 
-
-        boolean up = this.keyboard.isKeyDown(Keyboard.KEY_UP);
-        boolean down = this.keyboard.isKeyDown(Keyboard.KEY_DOWN);
-        boolean left = this.keyboard.isKeyDown(Keyboard.KEY_LEFT);
-        boolean right = this.keyboard.isKeyDown(Keyboard.KEY_RIGHT);
-
-        if(this.keyboard.isKeyDownInFrame(Keyboard.KEY_P)) {
-            if (paused) paused = false; else paused = true;
+        if(syncedLogic && syncedDisplay && mustSync) {
+            mustSync = false;
         }
 
-        int previous = direction;
-        if (up && !down && !left && !right) {
-            if (direction != 3) direction = 1;
-        } else if (!up && down && !left && !right) {
-            if (direction != 1) direction = 3;
-        } else if (!up && !down && left && !right) {
-            if (direction != 2) direction = 0;
-        } else if (!up && !down && !left && right) {
-            if (direction != 0) direction = 2;
-        }
+        if(mustSync && !syncedLogic) {
+            boolean up = this.keyboard.isKeyDown(Keyboard.KEY_UP);
+            boolean down = this.keyboard.isKeyDown(Keyboard.KEY_DOWN);
+            boolean left = this.keyboard.isKeyDown(Keyboard.KEY_LEFT);
+            boolean right = this.keyboard.isKeyDown(Keyboard.KEY_RIGHT);
 
-        if(!isServer && direction!=previous) {
-            client.sendInt(0); //update direction request
-            client.sendInt(direction);
-        }
 
-        if(frameCounter >= REFRESH_RATE/6) {
+            int previousdir = direction;
+            if (up && !down && !left && !right) {
+                if (direction != 3) direction = 1;
+            } else if (!up && down && !left && !right) {
+                if (direction != 1) direction = 3;
+            } else if (!up && !down && left && !right) {
+                if (direction != 2) direction = 0;
+            } else if (!up && !down && !left && right) {
+                if (direction != 0) direction = 2;
+            }
+
+            if(direction!=previousdir) {
+                if (client.sendInt(0) != 0) { //update direction request
+                    GlobalLogger.log(this, LogLevel.SEVERE, "Can't send request!");
+                } else {
+                    GlobalLogger.log(this, LogLevel.INFO, "Sending updatedirection request");
+                }
+                client.sendInt(direction);
+            }
+
             if(snake.get(0).getX() == apple.x && snake.get(0).getY() == apple.y ) addPiece = true;
 
             for(MySnakePiece piece : snake) {
@@ -263,7 +190,8 @@ public class MySnakeMultiplayer extends Game {
                 }
             }
 
-            if(!fuckingDead && !paused && !waitingForOpponent) {
+            //update your snake
+            if(!fuckingDead) {
                 MySnakePiece previous = new MySnakePiece(snake.get(0).getX(), snake.get(0).getY());
                 switch(direction) {
                     case -1: default: break;
@@ -286,14 +214,37 @@ public class MySnakeMultiplayer extends Game {
                         apple = new Vector2I(rand.nextInt(BOARD_WIDTH), rand.nextInt(BOARD_HEIGHT));
                         snake.add(new MySnakePiece(snake.get(snake.size()-1).getX(), snake.get(snake.size()-1).getY()));
                         addPiece = false;
-                        speed+=.25;
                     }
                 }
+
+
+                //update opponent snakes
+                for(MySnakeMultiplayerOpponent opponent : opponents) {
+                    previous = new MySnakePiece(opponent.getSnake().get(0).getX(), opponent.getSnake().get(0).getY());
+                    switch(opponent.getDirection()) {
+                        case -1: default: break;
+                        case 0: opponent.getSnake().get(0).changeX(-1); break;
+                        case 1: opponent.getSnake().get(0).changeY(-1); break;
+                        case 2: opponent.getSnake().get(0).changeX(1); break;
+                        case 3: opponent.getSnake().get(0).changeY(1); break;
+                    }
+
+                    if (opponent.getDirection() != -1) {
+                        for(int i = 1; i < opponent.getSnake().size(); i += 1) {
+                            MySnakePiece piece = opponent.getSnake().get(i);
+                            MySnakePiece temp = new MySnakePiece(piece.getX(), piece.getY());
+                            piece.setX(previous.getX());
+                            piece.setY(previous.getY());
+                            previous = temp;
+                        }
+                    }
+
+                }
+
+
             }
-            frameCounter = 0;
+            syncedLogic = true;
         }
-        // GlobalLogger.log(this, LogLevel.INFO, "%d", frameCounter);
-        frameCounter+=1;
     }
 
     @Override
@@ -304,46 +255,42 @@ public class MySnakeMultiplayer extends Game {
         graphics.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
         // DRAW
 
+        if(mustSync && !syncedDisplay) {
 
-        //APPLE
-        graphics.setColor(Color.GREEN);
-        graphics.fillRect(apple.x*CELL_SIZE + 1, apple.y*CELL_SIZE + 1, CELL_SIZE - 1, CELL_SIZE - 1);
+            //APPLE
+            graphics.setColor(Color.GREEN);
+            graphics.fillRect(apple.x*CELL_SIZE + 1, apple.y*CELL_SIZE + 1, CELL_SIZE - 1, CELL_SIZE - 1);
 
-        //YOUR SNAKE
-        graphics.setColor(Color.BLACK);
-        for(MySnakePiece piece : snake) {
-            int i = piece.getX();
-            int j = piece.getY();
-            graphics.fillRect(i * CELL_SIZE + 1, j * CELL_SIZE + 1, CELL_SIZE - 1, CELL_SIZE - 1);
-        }
-
-        //OPPONENTS
-        for(MySnakeMultiplayerOpponent opponent : opponents) {
-            for(MySnakePiece piece : opponent.getSnake()) {
+            //YOUR SNAKE
+            graphics.setColor(Color.BLACK);
+            for(MySnakePiece piece : snake) {
                 int i = piece.getX();
                 int j = piece.getY();
                 graphics.fillRect(i * CELL_SIZE + 1, j * CELL_SIZE + 1, CELL_SIZE - 1, CELL_SIZE - 1);
             }
+
+            //OPPONENTS
+            for(MySnakeMultiplayerOpponent opponent : opponents) {
+                for(MySnakePiece piece : opponent.getSnake()) {
+                    int i = piece.getX();
+                    int j = piece.getY();
+                    graphics.fillRect(i * CELL_SIZE + 1, j * CELL_SIZE + 1, CELL_SIZE - 1, CELL_SIZE - 1);
+                }
+            }
+
+
+
+            //ON SCREEN TEXT
+            if(fuckingDead) {
+                Screen.drawCenteredString("YOU LOOSE", 0, 0, SCREEN_WIDTH,SCREEN_HEIGHT, FontHandler.retrieveFont(this, "8bit").deriveFont(80f), Color.RED);
+            }
+
+
+            // if(waitingForOpponent) {
+            //     Screen.drawCenteredString("Waiting for opponent...", 0, 0, SCREEN_WIDTH,SCREEN_HEIGHT, FontHandler.retrieveFont(this, "8bit").deriveFont(70f), Color.BLACK);
+            // }
+
+            syncedDisplay = true;
         }
-
-
-
-        //ON SCREEN TEXT
-        if(fuckingDead) {
-            Screen.drawCenteredString("YOU LOOSE", 0, 0, SCREEN_WIDTH,SCREEN_HEIGHT, FontHandler.retrieveFont(this, "8bit").deriveFont(80f), Color.RED);
-        }
-
-        if(paused) {
-            Screen.drawCenteredString("PAUSED", 0, 0, SCREEN_WIDTH,SCREEN_HEIGHT, FontHandler.retrieveFont(this, "8bit").deriveFont(80f), Color.BLACK);
-        }
-
-        if(waitingForOpponent) {
-            Screen.drawCenteredString("Waiting for opponent...", 0, 0, SCREEN_WIDTH,SCREEN_HEIGHT, FontHandler.retrieveFont(this, "8bit").deriveFont(70f), Color.BLACK);
-        }
-
-
-        // graphics.setFont(FontHandler.retrieveFont(this, "8bit").deriveFont(70f));
-        // graphics.setColor(Color.BLACK);
-        // graphics.drawString(String.valueOf(snake.size()), 0, 40);
     }
 }

@@ -296,8 +296,8 @@ class Server {
     }
   }
 
-  public int recvInt(int id) {
-    //returns -2147483648 on error. else returns parsed received int
+  public Integer recvInt(int id) {
+    //returns null on error. else returns parsed received int
     Client client = this.clients.get(getClientIndexById(id));
 
     byte[] buffer = new byte[7];
@@ -305,7 +305,7 @@ class Server {
       client.socket.getInputStream().read(buffer);
     } catch(Exception e) {
       System.out.println("NETWORKING ERROR: " + e.toString());
-      return -2147483648;
+      return null;
     }
 
     // for(int i=0;i<buffer.length;i++){

@@ -2,6 +2,7 @@
 ./MySnake.java
 ./MySnakeMultiplayer.java
 ./Networking.java
+./MySnakeMultiplayerDedicatedServer.java
 ./MySnakeLauncherMultiplayer.java
 ./MySnakeLauncher.java
 ./src/com/iddej/gingerbread2/display/Window.java

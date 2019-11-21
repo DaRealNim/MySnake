@@ -4,8 +4,8 @@ public class MySnakeLauncherMultiplayer {
 
     public static void main(String[] args) {
 
-        if(args.length < 3) {
-            System.out.println("You need to pass the following arguments: server/client ip port");
+        if(args.length < 2) {
+            System.out.println("You need to pass the following arguments: ip port");
             return;
         }
 
