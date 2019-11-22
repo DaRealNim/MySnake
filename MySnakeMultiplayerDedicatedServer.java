@@ -238,10 +238,6 @@ public class MySnakeMultiplayerDedicatedServer {
 
 
 
-
-
-
-
     public static void main(String[] args) {
         players = new ArrayList<MySnakeMultiplayerOpponent>();
         apple = generateApple();
