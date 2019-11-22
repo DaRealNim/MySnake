@@ -54,27 +54,66 @@ public class MySnakeMultiplayer extends Game {
 
     }
 
+    private MySnakeMultiplayerOpponent getOpponentByClientId(int clientId) {
+        for(MySnakeMultiplayerOpponent opponent : opponents) {
+            if(opponent.getId() == clientId) return opponent;
+        }
+        return null;
+    }
+
+    private int receiveUntilNotSync() {
+        int request;
+        while(true) {
+            request = client.recvInt();
+            if(request != 0xC0) break;
+        }
+        return request;
+    }
 
 
     public class RequestThread extends Thread {
         Client client;
 
         //Client side possible requests:
-        //0 : sync request: handle all logic once
+        //C0h : sync request: handle all logic once
+        //1 : updated direction for client n
+        //  - recv client id
+        //  - recv direction
+        //2 : new client connected!
+        //  - recv their id
+        //  - recv their x
+        //  - recv their y
 
         public void run() {
             GlobalLogger.log(this, LogLevel.INFO, "STARTING RequestThread");
             while(true) {
-                Integer request = client.recvInt();
-                if (request == null) {
+                int request = client.recvInt();
+                if (request == -2147483648) {
                     return;
                 }
                 switch(request) {
-                    case 0:
+                    case 0xC0:
                         mustSync = true;
+                        break;
+                    case 1:
+                        int i = receiveUntilNotSync();
+                        int d = receiveUntilNotSync();
+                        GlobalLogger.log(this, LogLevel.INFO, "Updating direction of client %d to %d",i, d);
+                        getOpponentByClientId(i).setDirection(d);
+                        break;
+                    case 2:
+                        int id = receiveUntilNotSync();
+                        int x = receiveUntilNotSync();
+                        int y = receiveUntilNotSync();
+                        MySnakeMultiplayerOpponent newopponent = new MySnakeMultiplayerOpponent(id);
+                        GlobalLogger.log(this, LogLevel.INFO, "New opponent at id %d, on pos (%d,%d)",id,x,y);
+                        newopponent.addPiece(new MySnakePiece(x,y));
+                        newopponent.addPiece(new MySnakePiece(x+1,y));
+                        opponents.add(newopponent);
                         break;
                     default:
                         GlobalLogger.log(this, LogLevel.SEVERE, "Invalid request %d received from server", request);
+                        this.stop();
                         break;
                 }
             }
@@ -92,6 +131,7 @@ public class MySnakeMultiplayer extends Game {
         port = Integer.valueOf(args[1]);
     }
 
+
     @Override
     protected void create() {
         // DO YOUR STUFF
@@ -101,7 +141,7 @@ public class MySnakeMultiplayer extends Game {
         if(client.connect(IP, port) != 0) {
             GlobalLogger.log(this, LogLevel.FATAL, "Could not connect to provided RHOST");
         } else {
-            GlobalLogger.log(this, LogLevel.FATAL, "Connection successful!");
+            GlobalLogger.log(this, LogLevel.INFO, "Connection successful!");
         }
         client.sendString("MySnakeMultiplayer by Nim");
 
@@ -111,13 +151,53 @@ public class MySnakeMultiplayer extends Game {
         opponents = new ArrayList<MySnakeMultiplayerOpponent>();
 
         //receive your snake position
-        int x = client.recvInt();
-        int y = client.recvInt();
-
+        int x = receiveUntilNotSync();
+        int y = receiveUntilNotSync();
         snake.add(new MySnakePiece(x, y));
         snake.add(new MySnakePiece(x+1, y+1));
 
-        apple = new Vector2I(rand.nextInt(BOARD_WIDTH), rand.nextInt(BOARD_HEIGHT));
+        direction = -1;
+
+        //we now receive:
+        // -the apple x pos
+        // -the apple y pos
+        // -the number of players, besides them
+        // for every player:
+        //   -client id
+        //   -the current direction
+        //   -the number of tails in the list
+        //   for every tail:
+        //     -the tail x pos
+        //     -the tail y pos
+        //the number 1908 to mark end of transmission!
+
+        apple = new Vector2I(0,0);
+        apple.x = receiveUntilNotSync();
+        apple.y = receiveUntilNotSync();
+        int playern = receiveUntilNotSync();
+
+
+        GlobalLogger.log(this, LogLevel.INFO, "%d players currently connected (besides you)", playern);
+        for(int i=0; i<playern; i++) {
+            int id = receiveUntilNotSync();
+            MySnakeMultiplayerOpponent currentOpponent = new MySnakeMultiplayerOpponent(id);
+            currentOpponent.setDirection(client.recvInt());
+            int tailsn = receiveUntilNotSync();
+            for(int j=0; j<tailsn; j++) {
+                int tailx = receiveUntilNotSync();
+                int taily = receiveUntilNotSync();
+                currentOpponent.addPiece(new MySnakePiece(tailx,taily));
+            }
+            opponents.add(currentOpponent);
+        }
+
+        int controlcode = receiveUntilNotSync();
+        if(controlcode != 1908) {
+            GlobalLogger.log(this, LogLevel.SEVERE, "Something went horribly wrong. Got %d for control code", controlcode);
+        } else {
+            GlobalLogger.log(this, LogLevel.INFO, "Seems like everything went smoothly :D! Noice!");
+        }
+
         addPiece = false;
         fuckingDead = false;
 
@@ -125,7 +205,7 @@ public class MySnakeMultiplayer extends Game {
         requestThread.start();
         // ImageHandler.registerImage(this, "apple", "/home/Nim/MySnake/res/img/apple.png");
 
-        // GlobalLogger.log(this, LogLevel.INFO, "%s", IP);
+        GlobalLogger.log(this, LogLevel.INFO, "Starting...");
 
         FontHandler.registerFont(this, "8bit", "/home/Nim/github_clones/MySnake/res/fonts/8bit.ttf");
         super.create();
@@ -151,10 +231,14 @@ public class MySnakeMultiplayer extends Game {
         // LOGIC GOES HERE
 
         if(syncedLogic && syncedDisplay && mustSync) {
+            // GlobalLogger.log(this, LogLevel.INFO, "SYNCING COMPLETE");
             mustSync = false;
+            syncedLogic = false;
+            syncedDisplay = false;
         }
 
         if(mustSync && !syncedLogic) {
+            // GlobalLogger.log(this, LogLevel.INFO, "SYNCING LOGIC");
             boolean up = this.keyboard.isKeyDown(Keyboard.KEY_UP);
             boolean down = this.keyboard.isKeyDown(Keyboard.KEY_DOWN);
             boolean left = this.keyboard.isKeyDown(Keyboard.KEY_LEFT);
@@ -250,12 +334,16 @@ public class MySnakeMultiplayer extends Game {
     @Override
     public void render(Graphics graphics) {
         Screen.setGraphics(graphics);
-        Screen.clear(this.window);
-        graphics.setColor(Color.WHITE);
-        graphics.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
         // DRAW
 
         if(mustSync && !syncedDisplay) {
+            // GlobalLogger.log(this, LogLevel.INFO, "SYNCING DISPLAY");
+
+            //CLEAR SCREEN
+            Screen.clear(this.window);
+            graphics.setColor(Color.WHITE);
+            graphics.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+
 
             //APPLE
             graphics.setColor(Color.GREEN);

@@ -79,7 +79,7 @@ class Server {
     int currentlastclientid = this.ccount;
     while(true) {
       try {
-        TimeUnit.MILLISECONDS.sleep(300);
+        TimeUnit.MILLISECONDS.sleep(100);
       } catch(Exception e) {
         System.out.println(e.toString());
       }
@@ -296,7 +296,7 @@ class Server {
     }
   }
 
-  public Integer recvInt(int id) {
+  public int recvInt(int id) {
     //returns null on error. else returns parsed received int
     Client client = this.clients.get(getClientIndexById(id));
 
@@ -305,7 +305,7 @@ class Server {
       client.socket.getInputStream().read(buffer);
     } catch(Exception e) {
       System.out.println("NETWORKING ERROR: " + e.toString());
-      return null;
+      return -2147483648;
     }
 
     // for(int i=0;i<buffer.length;i++){

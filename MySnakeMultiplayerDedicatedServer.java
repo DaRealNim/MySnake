@@ -1,5 +1,6 @@
 import com.iddej.gingerbread2.logging.GlobalLogger;
 import com.iddej.gingerbread2.logging.GlobalLogger.LogLevel;
+import com.iddej.gingerbread2.util.fixedpoint.Vector2I;
 import java.util.Random;
 import java.util.ArrayList;
 import java.util.Date;
@@ -17,15 +18,12 @@ public class MySnakeMultiplayerDedicatedServer {
     private static Server server;
     private static final Random rand = new Random();
     private static ArrayList<MySnakeMultiplayerOpponent> players;
+    private static Vector2I apple;
 
     private static int port;
 
     private static SyncThread syncThread;
     private static AcceptThread acceptThread;
-
-    //server side possible requests:
-    //0: update direction of my snake
-    //  - recv direction (int)
 
 
 
@@ -39,6 +37,9 @@ public class MySnakeMultiplayerDedicatedServer {
         }
     }
 
+    private static Vector2I generateApple() {
+        return new Vector2I(rand.nextInt(BOARD_WIDTH),rand.nextInt(BOARD_HEIGHT));
+    }
 
 
     private static MySnakeMultiplayerOpponent getOpponentByClientId(int clientId) {
@@ -56,21 +57,33 @@ public class MySnakeMultiplayerDedicatedServer {
 
         public void run() {
             while(true) {
+                //server side possible requests:
+                //0: update direction of my snake
+                //  - recv direction (int)
+
                 GlobalLogger.log(this, LogLevel.INFO, "Listening for request from client %d",clientId);
-                Integer request = server.recvInt(clientId);
-                if (request == null) {
+                int request = server.recvInt(clientId);
+                if (request == -2147483648) {
                     return;
                 }
                 switch(request) {
                     case 0:
                         int direction = server.recvInt(clientId);
-                        if (0 <= direction && direction <= 3)
+                        if (0 <= direction && direction <= 3) {
                             getOpponentByClientId(clientId).setDirection(direction);
-                        else
+                            for(MySnakeMultiplayerOpponent player : players) {
+                                if(player == getOpponentByClientId(clientId)) continue;
+                                server.sendInt(player.getId(),1);
+                                server.sendInt(player.getId(),clientId);
+                                server.sendInt(player.getId(),direction);
+                            }
+                        } else {
                             GlobalLogger.log(this, LogLevel.SEVERE, "Invalid direction %d received from client %d (%s)", direction, clientId, server.getClientIPById(clientId));
+                        }
                         break;
                     default:
                         GlobalLogger.log(this, LogLevel.SEVERE, "Invalid request %d received from client %d (%s)", request, clientId, server.getClientIPById(clientId));
+                        this.stop();
                         break;
                 }
             }
@@ -89,8 +102,34 @@ public class MySnakeMultiplayerDedicatedServer {
         public void run() {
             while(true) {
                 waitNMillis(timeUntilSync);
+                // GlobalLogger.log(this, LogLevel.INFO, "Syncing!");
+
+                //let's sync: we compute new positions based on directions, to distribute to new players
+                for(MySnakeMultiplayerOpponent opponent : players) {
+                    MySnakePiece previous = new MySnakePiece(opponent.getSnake().get(0).getX(), opponent.getSnake().get(0).getY());
+                    switch(opponent.getDirection()) {
+                        case -1: default: break;
+                        case 0: opponent.getSnake().get(0).changeX(-1); break;
+                        case 1: opponent.getSnake().get(0).changeY(-1); break;
+                        case 2: opponent.getSnake().get(0).changeX(1); break;
+                        case 3: opponent.getSnake().get(0).changeY(1); break;
+                    }
+
+                    if (opponent.getDirection() != -1) {
+                        for(int i = 1; i < opponent.getSnake().size(); i += 1) {
+                            MySnakePiece piece = opponent.getSnake().get(i);
+                            MySnakePiece temp = new MySnakePiece(piece.getX(), piece.getY());
+                            piece.setX(previous.getX());
+                            piece.setY(previous.getY());
+                            previous = temp;
+                        }
+                    }
+                }
+
+                //now we send the sync packet.
                 for(MySnakeMultiplayerOpponent client : players) {
-                    server.sendInt(client.getId(), 0);
+                    // GlobalLogger.log(this, LogLevel.INFO, "Sending sync to %d",client.getId());
+                    server.sendInt(client.getId(), 0xC0);
                 }
             }
         }
@@ -118,11 +157,54 @@ public class MySnakeMultiplayerDedicatedServer {
                 //generating random start pos for this player
                 int x = rand.nextInt(BOARD_WIDTH);
                 int y = rand.nextInt(BOARD_HEIGHT);
+                //sending them
+                server.sendInt(clientId, x);
+                server.sendInt(clientId, y);
+
+                //we now send:
+                // -the apple x pos
+                // -the apple y pos
+                // -the number of players, besides them
+                // for every player:
+                //   -client id
+                //   -the current direction
+                //   -the number of tails in the list
+                //   for every tail:
+                //     -the tail x pos
+                //     -the tail y pos
+                //the number 1908 to mark end of transmission!
+
+                server.sendInt(clientId, apple.x);
+                server.sendInt(clientId, apple.y);
+                GlobalLogger.log(this, LogLevel.INFO, "Sending playern %d",players.size());
+                server.sendInt(clientId, players.size());
+                for(MySnakeMultiplayerOpponent player : players) {
+                    server.sendInt(clientId, player.getId());
+                    server.sendInt(clientId, player.getDirection());
+                    server.sendInt(clientId, player.getSnake().size());
+                    for(MySnakePiece piece : player.getSnake()) {
+                        server.sendInt(clientId, piece.getX());
+                        server.sendInt(clientId, piece.getY());
+                    }
+                }
+                server.sendInt(clientId, 1908);
+
+                //now we need to send every player the newopponent request, along with your, your x and your y
+                for(MySnakeMultiplayerOpponent player : players) {
+                    server.sendInt(player.getId(), 2);
+                    server.sendInt(player.getId(), clientId);
+                    server.sendInt(player.getId(), x);
+                    server.sendInt(player.getId(), y);
+                }
+
+
                 MySnakeMultiplayerOpponent opponent = new MySnakeMultiplayerOpponent(clientId);
                 opponent.addPiece(new MySnakePiece(x,y));
                 opponent.addPiece(new MySnakePiece(x+1,y));
                 players.add(opponent);
                 new RequestThread(server,clientId).start();
+
+
             }
         }
 
@@ -138,6 +220,9 @@ public class MySnakeMultiplayerDedicatedServer {
 
 
     public static void main(String[] args) {
+        players = new ArrayList<MySnakeMultiplayerOpponent>();
+        apple = generateApple();
+        System.out.println("Apple placed at ("+apple.x+","+apple.y+")");
         port = Integer.valueOf(args[0]);
         server = new Server();
         System.out.println("MySnakeMultiplayerDedicatedServer started!");
@@ -146,6 +231,7 @@ public class MySnakeMultiplayerDedicatedServer {
             return;
         }
         syncThread = new SyncThread(200);
+        syncThread.start();
         acceptThread = new AcceptThread(server);
         acceptThread.start();
     }
