@@ -93,6 +93,17 @@ public class MySnakeMultiplayer extends Game {
         //4 : new apple
         //  - recv new apple x
         //  - recv new apple y
+        //5 : globalsync
+        // -the number of players, besides them
+        // for every player:
+        //   -client id
+        //   -the current direction
+        //   -the number of tails in the list
+        //   for every tail:
+        //     -the tail x pos
+        //     -the tail y pos
+        //the number 1908 to mark end of transmission!
+
 
         public void run() {
             GlobalLogger.log(this, LogLevel.INFO, "STARTING RequestThread");
@@ -138,6 +149,31 @@ public class MySnakeMultiplayer extends Game {
                         apple.x = x;
                         apple.y = y;
                         break;
+                    case 5:
+                        int playern = receiveUntilNotSync();
+                        GlobalLogger.log(this, LogLevel.INFO, "Global sync received");
+                        GlobalLogger.log(this, LogLevel.INFO, "%d players currently connected (besides you)", playern);
+                        for(int k=0; k<playern; k++) {
+                            id = receiveUntilNotSync();
+                            MySnakeMultiplayerOpponent currentOpponent = getOpponentByClientId(id);
+                            currentOpponent.setDirection(client.recvInt());
+                            int tailsn = receiveUntilNotSync();
+                            for(int j=0; j<tailsn; j++) {
+                                int tailx = receiveUntilNotSync();
+                                int taily = receiveUntilNotSync();
+                                currentOpponent.getSnake().get(j).setX(tailx);
+                                currentOpponent.getSnake().get(j).setY(taily);
+                            }
+                        }
+
+                        int controlcode = receiveUntilNotSync();
+                        if(controlcode != 1908) {
+                            GlobalLogger.log(this, LogLevel.SEVERE, "Something went horribly wrong. Got %d for control code", controlcode);
+                        } else {
+                            GlobalLogger.log(this, LogLevel.INFO, "Seems like everything went smoothly :D! Noice!");
+                        }
+                        break;
+
                     default:
                         GlobalLogger.log(this, LogLevel.SEVERE, "Invalid request %d received from server", request);
                         this.stop();
@@ -206,9 +242,8 @@ public class MySnakeMultiplayer extends Game {
         apple = new Vector2I(0,0);
         apple.x = receiveUntilNotSync();
         apple.y = receiveUntilNotSync();
+
         int playern = receiveUntilNotSync();
-
-
         GlobalLogger.log(this, LogLevel.INFO, "%d players currently connected (besides you)", playern);
         for(int i=0; i<playern; i++) {
             int id = receiveUntilNotSync();

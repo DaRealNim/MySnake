@@ -25,6 +25,8 @@ public class MySnakeMultiplayerDedicatedServer {
     private static SyncThread syncThread;
     private static AcceptThread acceptThread;
 
+    private static int syncCount;
+
 
 
     private static void waitNMillis(int n) {
@@ -104,6 +106,26 @@ public class MySnakeMultiplayerDedicatedServer {
                 waitNMillis(timeUntilSync);
                 // GlobalLogger.log(this, LogLevel.INFO, "Syncing!");
 
+                if(syncCount % 10 == 0) {       // Every 10 sync (2 seconds) we update positions to be sure there are no discrepencies
+                    GlobalLogger.log(this, LogLevel.INFO, "Sending global sync");
+                    for(MySnakeMultiplayerOpponent currentclient : players) {
+                        int clientId = currentclient.getId();
+                        server.sendInt(clientId, 5);
+                        server.sendInt(clientId, players.size()-1);
+                        for(MySnakeMultiplayerOpponent player : players) {
+                            if(player == currentclient) continue;
+                            server.sendInt(clientId, player.getId());
+                            server.sendInt(clientId, player.getDirection());
+                            server.sendInt(clientId, player.getSnake().size());
+                            for(MySnakePiece piece : player.getSnake()) {
+                                server.sendInt(clientId, piece.getX());
+                                server.sendInt(clientId, piece.getY());
+                            }
+                        }
+                        server.sendInt(clientId, 1908);
+                    }
+                }
+
                 //let's sync: we compute new positions based on directions, to distribute to new players
                 for(MySnakeMultiplayerOpponent opponent : players) {
                     boolean addPiece = false;
@@ -154,6 +176,8 @@ public class MySnakeMultiplayerDedicatedServer {
                     // GlobalLogger.log(this, LogLevel.INFO, "Sending sync to %d",client.getId());
                     server.sendInt(client.getId(), 0xC0);
                 }
+
+                syncCount++;
             }
         }
 
@@ -241,6 +265,7 @@ public class MySnakeMultiplayerDedicatedServer {
     public static void main(String[] args) {
         players = new ArrayList<MySnakeMultiplayerOpponent>();
         apple = generateApple();
+        syncCount = 0;
         System.out.println("Apple placed at ("+apple.x+","+apple.y+")");
         port = Integer.valueOf(args[0]);
         server = new Server();
