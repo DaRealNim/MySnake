@@ -94,15 +94,18 @@ public class MySnakeMultiplayer extends Game {
         //  - recv new apple x
         //  - recv new apple y
         //5 : globalsync
-        // -the number of players, besides them
-        // for every player:
-        //   -client id
-        //   -the current direction
-        //   -the number of tails in the list
-        //   for every tail:
-        //     -the tail x pos
-        //     -the tail y pos
-        //the number 1908 to mark end of transmission!
+        //  -the number of players, besides them
+        //  for every player:
+        //      -client id
+        //      -the current direction
+        //      -the number of tails in the list
+        //  for every tail:
+        //      -the tail x pos
+        //      -the tail y pos
+        //  the number 1908 to mark end of transmission!
+        //6 : youdead
+        //7 : playerdied
+        //  - recv clientId
 
 
         public void run() {
@@ -125,7 +128,7 @@ public class MySnakeMultiplayer extends Game {
                         i = receiveUntilNotSync();
                         d = receiveUntilNotSync();
                         GlobalLogger.log(this, LogLevel.INFO, "Updating direction of client %d to %d",i, d);
-                        getOpponentByClientId(i).setDirection(d);
+                        if(getOpponentByClientId(i) != null) getOpponentByClientId(i).setDirection(d);
                         break;
                     case 2:
                         id = receiveUntilNotSync();
@@ -140,7 +143,7 @@ public class MySnakeMultiplayer extends Game {
                     case 3:
                         id = receiveUntilNotSync();
                         GlobalLogger.log(this, LogLevel.INFO, "Apple eaten by opponent %d!", id);
-                        getOpponentByClientId(id).addPiece(new MySnakePiece(getOpponentByClientId(id).getSnake().get(getOpponentByClientId(id).getSnake().size()-1).getX(), getOpponentByClientId(id).getSnake().get(getOpponentByClientId(id).getSnake().size()-1).getY()));
+                        if(getOpponentByClientId(id) != null) getOpponentByClientId(id).addPiece(new MySnakePiece(getOpponentByClientId(id).getSnake().get(getOpponentByClientId(id).getSnake().size()-1).getX(), getOpponentByClientId(id).getSnake().get(getOpponentByClientId(id).getSnake().size()-1).getY()));
                         break;
                     case 4:
                         x = receiveUntilNotSync();
@@ -151,18 +154,20 @@ public class MySnakeMultiplayer extends Game {
                         break;
                     case 5:
                         int playern = receiveUntilNotSync();
-                        GlobalLogger.log(this, LogLevel.INFO, "Global sync received");
-                        GlobalLogger.log(this, LogLevel.INFO, "%d players currently connected (besides you)", playern);
+                        // GlobalLogger.log(this, LogLevel.INFO, "Global sync received");
+                        // GlobalLogger.log(this, LogLevel.INFO, "%d players currently connected (besides you)", playern);
                         for(int k=0; k<playern; k++) {
                             id = receiveUntilNotSync();
                             MySnakeMultiplayerOpponent currentOpponent = getOpponentByClientId(id);
-                            currentOpponent.setDirection(client.recvInt());
-                            int tailsn = receiveUntilNotSync();
-                            for(int j=0; j<tailsn; j++) {
-                                int tailx = receiveUntilNotSync();
-                                int taily = receiveUntilNotSync();
-                                currentOpponent.getSnake().get(j).setX(tailx);
-                                currentOpponent.getSnake().get(j).setY(taily);
+                            if(currentOpponent != null) {
+                                currentOpponent.setDirection(client.recvInt());
+                                int tailsn = receiveUntilNotSync();
+                                for(int j=0; j<tailsn; j++) {
+                                    int tailx = receiveUntilNotSync();
+                                    int taily = receiveUntilNotSync();
+                                    currentOpponent.getSnake().get(j).setX(tailx);
+                                    currentOpponent.getSnake().get(j).setY(taily);
+                                }
                             }
                         }
 
@@ -170,8 +175,16 @@ public class MySnakeMultiplayer extends Game {
                         if(controlcode != 1908) {
                             GlobalLogger.log(this, LogLevel.SEVERE, "Something went horribly wrong. Got %d for control code", controlcode);
                         } else {
-                            GlobalLogger.log(this, LogLevel.INFO, "Seems like everything went smoothly :D! Noice!");
+                            // GlobalLogger.log(this, LogLevel.INFO, "Seems like everything went smoothly :D! Noice!");
                         }
+                        break;
+                    case 6:
+                        fuckingDead = true;
+                        break;
+
+                    case 7:
+                        id = receiveUntilNotSync();
+                        opponents.remove(getOpponentByClientId(id));
                         break;
 
                     default:
@@ -274,7 +287,7 @@ public class MySnakeMultiplayer extends Game {
 
         GlobalLogger.log(this, LogLevel.INFO, "Starting...");
 
-        // FontHandler.registerFont(this, "8bit", "/home/Nim/github_clones/MySnake/res/fonts/8bit.ttf");
+        FontHandler.registerFont(this, "8bit", System.getProperty("user.dir")+"/../res/fonts/8bit.ttf");
         super.create();
     }
 
@@ -378,27 +391,27 @@ public class MySnakeMultiplayer extends Game {
 
 
                 //update opponent snakes
-                for(MySnakeMultiplayerOpponent opponent : opponents) {
-                    previous = new MySnakePiece(opponent.getSnake().get(0).getX(), opponent.getSnake().get(0).getY());
-                    switch(opponent.getDirection()) {
-                        case -1: default: break;
-                        case 0: opponent.getSnake().get(0).changeX(-1); break;
-                        case 1: opponent.getSnake().get(0).changeY(-1); break;
-                        case 2: opponent.getSnake().get(0).changeX(1); break;
-                        case 3: opponent.getSnake().get(0).changeY(1); break;
-                    }
-
-                    if (opponent.getDirection() != -1) {
-                        for(int i = 1; i < opponent.getSnake().size(); i += 1) {
-                            MySnakePiece piece = opponent.getSnake().get(i);
-                            MySnakePiece temp = new MySnakePiece(piece.getX(), piece.getY());
-                            piece.setX(previous.getX());
-                            piece.setY(previous.getY());
-                            previous = temp;
-                        }
-                    }
-
-                }
+                // for(MySnakeMultiplayerOpponent opponent : opponents) {
+                //     previous = new MySnakePiece(opponent.getSnake().get(0).getX(), opponent.getSnake().get(0).getY());
+                //     switch(opponent.getDirection()) {
+                //         case -1: default: break;
+                //         case 0: opponent.getSnake().get(0).changeX(-1); break;
+                //         case 1: opponent.getSnake().get(0).changeY(-1); break;
+                //         case 2: opponent.getSnake().get(0).changeX(1); break;
+                //         case 3: opponent.getSnake().get(0).changeY(1); break;
+                //     }
+                //
+                //     if (opponent.getDirection() != -1) {
+                //         for(int i = 1; i < opponent.getSnake().size(); i += 1) {
+                //             MySnakePiece piece = opponent.getSnake().get(i);
+                //             MySnakePiece temp = new MySnakePiece(piece.getX(), piece.getY());
+                //             piece.setX(previous.getX());
+                //             piece.setY(previous.getY());
+                //             previous = temp;
+                //         }
+                //     }
+                //
+                // }
 
 
             }
@@ -445,7 +458,7 @@ public class MySnakeMultiplayer extends Game {
 
             //ON SCREEN TEXT
             if(fuckingDead) {
-                Screen.drawCenteredString("YOU LOOSE", 0, 0, SCREEN_WIDTH,SCREEN_HEIGHT, FontHandler.retrieveFont(this, "8bit").deriveFont(80f), Color.RED);
+                Screen.drawCenteredString("YOU DEAD", 0, 0, SCREEN_WIDTH,SCREEN_HEIGHT, FontHandler.retrieveFont(this, "8bit").deriveFont(80f), Color.RED);
             }
 
 

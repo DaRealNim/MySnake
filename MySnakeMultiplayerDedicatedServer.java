@@ -63,7 +63,7 @@ public class MySnakeMultiplayerDedicatedServer {
                 //0: update direction of my snake
                 //  - recv direction (int)
 
-                GlobalLogger.log(this, LogLevel.INFO, "Listening for request from client %d",clientId);
+                // GlobalLogger.log(this, LogLevel.INFO, "Listening for request from client %d",clientId);
                 int request = server.recvInt(clientId);
                 if (request == -2147483648) {
                     return;
@@ -73,12 +73,12 @@ public class MySnakeMultiplayerDedicatedServer {
                         int direction = server.recvInt(clientId);
                         if (0 <= direction && direction <= 3) {
                             getOpponentByClientId(clientId).setDirection(direction);
-                            for(MySnakeMultiplayerOpponent player : players) {
-                                if(player == getOpponentByClientId(clientId)) continue;
-                                server.sendInt(player.getId(),1);
-                                server.sendInt(player.getId(),clientId);
-                                server.sendInt(player.getId(),direction);
-                            }
+                            // for(MySnakeMultiplayerOpponent player : players) {
+                            //     if(player == getOpponentByClientId(clientId)) continue;
+                            //     server.sendInt(player.getId(),1);
+                            //     server.sendInt(player.getId(),clientId);
+                            //     server.sendInt(player.getId(),direction);
+                            // }
                         } else {
                             GlobalLogger.log(this, LogLevel.SEVERE, "Invalid direction %d received from client %d (%s)", direction, clientId, server.getClientIPById(clientId));
                         }
@@ -106,8 +106,8 @@ public class MySnakeMultiplayerDedicatedServer {
                 waitNMillis(timeUntilSync);
                 // GlobalLogger.log(this, LogLevel.INFO, "Syncing!");
 
-                if(syncCount % 10 == 0) {       // Every 10 sync (2 seconds) we update positions to be sure there are no discrepencies
-                    GlobalLogger.log(this, LogLevel.INFO, "Sending global sync");
+                if(syncCount % 1 == 0) {       // Every 10 sync (2 seconds) we update positions to be sure there are no discrepencies
+                    // GlobalLogger.log(this, LogLevel.INFO, "Sending global sync");
                     for(MySnakeMultiplayerOpponent currentclient : players) {
                         int clientId = currentclient.getId();
                         server.sendInt(clientId, 5);
@@ -166,6 +166,26 @@ public class MySnakeMultiplayerDedicatedServer {
                             server.sendInt(otherplayer.getId(), 3);
                             server.sendInt(otherplayer.getId(), opponent.getId());
 
+                        }
+                    }
+
+                    //we check if the head of any player is colliding with any tail
+
+                    for(MySnakeMultiplayerOpponent currentplayer : players) {
+                        int headX = currentplayer.getSnake().get(0).getX();
+                        int headY = currentplayer.getSnake().get(0).getY();
+                        for(MySnakeMultiplayerOpponent otherplayer : players) {
+                            for(MySnakePiece piece : otherplayer.getSnake()) {
+                                if(piece == currentplayer.getSnake().get(0)) continue;
+                                if(headX == piece.getX() && headY == piece.getY()) {
+                                    server.sendInt(currentplayer.getId(), 6);
+                                    for(MySnakeMultiplayerOpponent ppppppplayerrrr : players) {
+                                        if(currentplayer == ppppppplayerrrr) continue;
+                                        server.sendInt(ppppppplayerrrr.getId(), 7);
+                                        server.sendInt(ppppppplayerrrr.getId(), currentplayer.getId());
+                                    }
+                                }
+                            }
                         }
                     }
 
