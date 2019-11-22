@@ -37,6 +37,11 @@ public class MySnakeMultiplayer extends Game {
     private boolean addPiece;
     private boolean fuckingDead;
 
+    private boolean up;
+    private boolean down;
+    private boolean left;
+    private boolean right;
+
     //multiplayer stuff
     private String IP;
     private int port;
@@ -83,6 +88,11 @@ public class MySnakeMultiplayer extends Game {
         //  - recv their id
         //  - recv their x
         //  - recv their y
+        //3 : apple eaten
+        //  - recv id of eating opponent
+        //4 : new apple
+        //  - recv new apple x
+        //  - recv new apple y
 
         public void run() {
             GlobalLogger.log(this, LogLevel.INFO, "STARTING RequestThread");
@@ -91,25 +101,42 @@ public class MySnakeMultiplayer extends Game {
                 if (request == -2147483648) {
                     return;
                 }
+                int i;
+                int d;
+                int id;
+                int x;
+                int y;
                 switch(request) {
                     case 0xC0:
                         mustSync = true;
                         break;
                     case 1:
-                        int i = receiveUntilNotSync();
-                        int d = receiveUntilNotSync();
+                        i = receiveUntilNotSync();
+                        d = receiveUntilNotSync();
                         GlobalLogger.log(this, LogLevel.INFO, "Updating direction of client %d to %d",i, d);
                         getOpponentByClientId(i).setDirection(d);
                         break;
                     case 2:
-                        int id = receiveUntilNotSync();
-                        int x = receiveUntilNotSync();
-                        int y = receiveUntilNotSync();
+                        id = receiveUntilNotSync();
+                        x = receiveUntilNotSync();
+                        y = receiveUntilNotSync();
                         MySnakeMultiplayerOpponent newopponent = new MySnakeMultiplayerOpponent(id);
                         GlobalLogger.log(this, LogLevel.INFO, "New opponent at id %d, on pos (%d,%d)",id,x,y);
                         newopponent.addPiece(new MySnakePiece(x,y));
                         newopponent.addPiece(new MySnakePiece(x+1,y));
                         opponents.add(newopponent);
+                        break;
+                    case 3:
+                        id = receiveUntilNotSync();
+                        GlobalLogger.log(this, LogLevel.INFO, "Apple eaten by opponent %d!", id);
+                        getOpponentByClientId(id).addPiece(new MySnakePiece(getOpponentByClientId(id).getSnake().get(getOpponentByClientId(id).getSnake().size()-1).getX(), getOpponentByClientId(id).getSnake().get(getOpponentByClientId(id).getSnake().size()-1).getY()));
+                        break;
+                    case 4:
+                        x = receiveUntilNotSync();
+                        y = receiveUntilNotSync();
+                        GlobalLogger.log(this, LogLevel.INFO, "New apple pos is (%d,%d)",x,y);
+                        apple.x = x;
+                        apple.y = y;
                         break;
                     default:
                         GlobalLogger.log(this, LogLevel.SEVERE, "Invalid request %d received from server", request);
@@ -150,11 +177,16 @@ public class MySnakeMultiplayer extends Game {
         syncedDisplay = false;
         opponents = new ArrayList<MySnakeMultiplayerOpponent>();
 
+        up = false;
+        down = false;
+        left = false;
+        right = false;
+
         //receive your snake position
         int x = receiveUntilNotSync();
         int y = receiveUntilNotSync();
         snake.add(new MySnakePiece(x, y));
-        snake.add(new MySnakePiece(x+1, y+1));
+        snake.add(new MySnakePiece(x+1, y));
 
         direction = -1;
 
@@ -207,7 +239,7 @@ public class MySnakeMultiplayer extends Game {
 
         GlobalLogger.log(this, LogLevel.INFO, "Starting...");
 
-        FontHandler.registerFont(this, "8bit", "/home/Nim/github_clones/MySnake/res/fonts/8bit.ttf");
+        // FontHandler.registerFont(this, "8bit", "/home/Nim/github_clones/MySnake/res/fonts/8bit.ttf");
         super.create();
     }
 
@@ -237,13 +269,15 @@ public class MySnakeMultiplayer extends Game {
             syncedDisplay = false;
         }
 
+        if(!up && !down && !left && !right) {
+            up = this.keyboard.isKeyDown(Keyboard.KEY_UP);
+            down = this.keyboard.isKeyDown(Keyboard.KEY_DOWN);
+            left = this.keyboard.isKeyDown(Keyboard.KEY_LEFT);
+            right = this.keyboard.isKeyDown(Keyboard.KEY_RIGHT);
+        }
+
         if(mustSync && !syncedLogic) {
             // GlobalLogger.log(this, LogLevel.INFO, "SYNCING LOGIC");
-            boolean up = this.keyboard.isKeyDown(Keyboard.KEY_UP);
-            boolean down = this.keyboard.isKeyDown(Keyboard.KEY_DOWN);
-            boolean left = this.keyboard.isKeyDown(Keyboard.KEY_LEFT);
-            boolean right = this.keyboard.isKeyDown(Keyboard.KEY_RIGHT);
-
 
             int previousdir = direction;
             if (up && !down && !left && !right) {
@@ -255,6 +289,11 @@ public class MySnakeMultiplayer extends Game {
             } else if (!up && !down && !left && right) {
                 if (direction != 0) direction = 2;
             }
+
+            up = false;
+            down = false;
+            left = false;
+            right = false;
 
             if(direction!=previousdir) {
                 if (client.sendInt(0) != 0) { //update direction request
@@ -295,7 +334,8 @@ public class MySnakeMultiplayer extends Game {
                     }
 
                     if(addPiece) {
-                        apple = new Vector2I(rand.nextInt(BOARD_WIDTH), rand.nextInt(BOARD_HEIGHT));
+                        //if everything is right, the server knows we ate the apple, so no need to regenerate another.
+                        //we just wait for the newapple request
                         snake.add(new MySnakePiece(snake.get(snake.size()-1).getX(), snake.get(snake.size()-1).getY()));
                         addPiece = false;
                     }

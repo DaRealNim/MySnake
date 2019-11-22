@@ -106,6 +106,10 @@ public class MySnakeMultiplayerDedicatedServer {
 
                 //let's sync: we compute new positions based on directions, to distribute to new players
                 for(MySnakeMultiplayerOpponent opponent : players) {
+                    boolean addPiece = false;
+
+                    addPiece = (opponent.getSnake().get(0).getX() == apple.x && opponent.getSnake().get(0).getY() == apple.y );
+
                     MySnakePiece previous = new MySnakePiece(opponent.getSnake().get(0).getX(), opponent.getSnake().get(0).getY());
                     switch(opponent.getDirection()) {
                         case -1: default: break;
@@ -124,6 +128,25 @@ public class MySnakeMultiplayerDedicatedServer {
                             previous = temp;
                         }
                     }
+
+                    //if the head is on the apple position, generate the new tail, a new apple position
+                    //and send everyone the appleaten request, along with the id of the eating opponent (to add tail),
+                    //as well as the new apple pos
+
+                    if(addPiece) {
+                        opponent.addPiece(new MySnakePiece(opponent.getSnake().get(opponent.getSnake().size()-1).getX(), opponent.getSnake().get(opponent.getSnake().size()-1).getY()));
+                        apple = generateApple();
+                        for(MySnakeMultiplayerOpponent otherplayer : players) {
+                            server.sendInt(otherplayer.getId(), 4);
+                            server.sendInt(otherplayer.getId(), apple.x);
+                            server.sendInt(otherplayer.getId(), apple.y);
+                            if(otherplayer == opponent) continue;
+                            server.sendInt(otherplayer.getId(), 3);
+                            server.sendInt(otherplayer.getId(), opponent.getId());
+
+                        }
+                    }
+
                 }
 
                 //now we send the sync packet.
